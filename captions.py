@@ -1,23 +1,8 @@
 import json
 import re
-import urllib.parse
 import urllib.request
-from typing import Optional
 
-# Public Android client settings; we reuse these to inspect caption tracks.
-# It's hardcoded inside the YouTube Android app itself and has been widely
-# documented by developers who reverse-engineered YouTube's internal API.
-API_KEY = "AIzaSyAOgs9M-1-5Zl0s5j-7iYkiT7VYTIzLw"
-PLAYER_URL = f"https://www.youtube.com/youtubei/v1/player?key={API_KEY}"
-CLIENT_CONTEXT = {
-    "client": {
-        "clientName": "ANDROID",
-        "clientVersion": "19.08.35",
-        "hl": "en",
-        "gl": "US",
-    }
-}
-TIMEDTEXT_URL = "https://www.youtube.com/api/timedtext"
+import yt_dlp
 
 
 def video_id_from_input(raw: str) -> str:
@@ -29,95 +14,34 @@ def video_id_from_input(raw: str) -> str:
     raise ValueError("Could not extract an 11-char YouTube video id.")
 
 
-def fetch_player(video_id: str) -> dict:
-    body = {"videoId": video_id, "context": CLIENT_CONTEXT}
-    data = json.dumps(body).encode("utf-8")
-    req = urllib.request.Request(
-        PLAYER_URL,
-        data=data,
-        method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "User-Agent": "com.google.android.youtube/19.08.35 (Linux; U; Android 13; en_US)",
-        },
-    )
-    with urllib.request.urlopen(req) as resp:
-        return json.loads(resp.read().decode("utf-8"))
-
-
-def pick_caption_track(player: dict, lang: str, kind: str) -> Optional[str]:
-    captions = player.get("captions", {}) or {}
-    # autoCaptions holds ASR; captionTracks holds manual.
-    pools = []
-    if kind == "auto":
-        pools.append(captions.get("playerCaptionsTracklistRenderer", {}).get("autoCaptions", []))
-    if kind == "manual":
-        pools.append(captions.get("playerCaptionsTracklistRenderer", {}).get("captionTracks", []))
-    # If kind not found, try the other as fallback.
-    if not pools or not pools[0]:
-        pools.append(captions.get("playerCaptionsTracklistRenderer", {}).get("captionTracks", []))
-        pools.append(captions.get("playerCaptionsTracklistRenderer", {}).get("autoCaptions", []))
-
-    for pool in pools:
-        for track in pool or []:
-            if track.get("languageCode") == lang:
-                base_url = track.get("baseUrl")
-                if base_url:
-                    return base_url
-    return None
-
-
-def fetch_captions_from_url(base_url: str) -> dict:
-    # Ensure we ask for JSON structure.
-    parsed = urllib.parse.urlparse(base_url)
-    q = urllib.parse.parse_qs(parsed.query)
-    q["fmt"] = ["json3"]
-    new_query = urllib.parse.urlencode(q, doseq=True)
-    url = urllib.parse.urlunparse(parsed._replace(query=new_query))
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64)",
-        },
-    )
-    with urllib.request.urlopen(req) as resp:
-        body = resp.read().decode("utf-8")
-    if not body:
-        raise RuntimeError("Empty caption response.")
-    return json.loads(body)
-
-
-def cues_from_events(doc: dict) -> list[dict]:
-    cues = []
-    for ev in doc.get("events", []):
-        start_ms = ev.get("tStartMs")
-        dur_ms = ev.get("dDurationMs")
-        if start_ms is None or dur_ms is None:
-            continue
-        segs = ev.get("segs") or []
-        text = "".join(seg.get("utf8", "") for seg in segs).replace("\n", " ").strip()
-        cues.append(
-            {
-                "start": start_ms / 1000.0,
-                "dur": dur_ms / 1000.0,
-                "text": text,
-            }
-        )
-    return cues
-
-
 def get_transcript(video_id: str) -> tuple[str, str]:
-    """Return (transcript_text, lang_code). Prefers manual over auto, any language."""
-    player = fetch_player(video_id)
-    tracks = player.get("captions", {}).get("playerCaptionsTracklistRenderer", {})
-    for pool_key in ("captionTracks", "autoCaptions"):
-        pool = tracks.get(pool_key) or []
-        if pool:
-            track = pool[0]
-            base_url = track.get("baseUrl")
-            lang_code = track.get("languageCode", "und")
-            if base_url:
-                doc = fetch_captions_from_url(base_url)
-                cues = cues_from_events(doc)
-                return " ".join(c["text"] for c in cues if c["text"]), lang_code
+    """Return (transcript_text, lang_code). Prefers manual over auto, English over others."""
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as ydl:
+        info = ydl.extract_info(url, download=False)
+
+    for pool in (info.get("subtitles") or {}, info.get("automatic_captions") or {}):
+        if not pool:
+            continue
+        lang = "en" if "en" in pool else next(iter(pool), None)
+        if not lang:
+            continue
+        formats = pool[lang]
+        fmt = next((f for f in formats if f.get("ext") == "json3"), None) or (formats[0] if formats else None)
+        if not fmt or not fmt.get("url"):
+            continue
+
+        req = urllib.request.Request(fmt["url"], headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req) as resp:
+            doc = json.loads(resp.read().decode("utf-8"))
+
+        cues = [
+            "".join(seg.get("utf8", "") for seg in ev.get("segs") or []).replace("\n", " ").strip()
+            for ev in doc.get("events", [])
+            if ev.get("tStartMs") is not None and ev.get("dDurationMs") is not None
+        ]
+        text = " ".join(c for c in cues if c)
+        if text:
+            return text, lang
+
     raise RuntimeError("No captions available for this video.")
