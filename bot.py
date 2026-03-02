@@ -2,6 +2,52 @@ import logging
 import os
 import re
 
+import mistune
+
+
+class TelegramRenderer(mistune.HTMLRenderer):
+    def heading(self, text, level, **attrs):
+        return f"<b>{text}</b>\n\n"
+
+    def paragraph(self, text):
+        return f"{text}\n\n"
+
+    def list(self, text, ordered, **attrs):
+        return text + "\n"
+
+    def list_item(self, text, **attrs):
+        return f"• {text.strip()}\n"
+
+    def block_code(self, code, **attrs):
+        return f"<pre>{code}</pre>\n\n"
+
+    def block_quote(self, text):
+        return f"<blockquote>{text.strip()}</blockquote>\n\n"
+
+    def thematic_break(self, **attrs):
+        return "\n"
+
+    def strong(self, text):
+        return f"<b>{text}</b>"
+
+    def emphasis(self, text):
+        return f"<i>{text}</i>"
+
+    def strikethrough(self, text):
+        return f"<s>{text}</s>"
+
+    def link(self, text, url, title=None, **attrs):
+        return f'<a href="{url}">{text}</a>'
+
+    def codespan(self, code):
+        return f"<code>{code}</code>"
+
+    def image(self, text, url, title=None, **attrs):
+        return text or ""
+
+
+_md = mistune.create_markdown(renderer=TelegramRenderer(), plugins=["strikethrough"])
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -38,7 +84,7 @@ async def handle_message(update: Update, context) -> None:
         video_id = video_id_from_input(url_match.group(0))
         transcript, lang_code, title = get_transcript(video_id)
         summary = summarize(transcript, lang_code, title)
-        await msg.edit_text(summary)
+        await msg.edit_text(_md(summary).strip(), parse_mode="HTML")
     except RuntimeError as e:
         await msg.edit_text(f"❌ {e}")
     except Exception:

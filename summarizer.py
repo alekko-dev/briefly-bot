@@ -27,7 +27,7 @@ Your summaries should:
 3. Filter out any sponsor messages, subscribe requests, or promotional content
 4. Include key timestamps in markdown link format like [12:34] for important moments
 5. End with a brief conclusion
-6. Use clear headings and bullet points for readability
+6. Use **bold** for section titles instead of Markdown headings (#), and bullet points for readability
 7. If the video title contains a question or a promise (e.g. "How to...", "Why...",
    "X will make you..."), make sure the summary explicitly addresses and answers it
 
