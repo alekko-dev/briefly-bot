@@ -83,7 +83,7 @@ async def handle_message(update: Update, context) -> None:
     try:
         video_id = video_id_from_input(url_match.group(0))
         transcript, lang_code, title = get_transcript(video_id)
-        summary = summarize(transcript, lang_code, title)
+        summary = summarize(transcript, lang_code, title, video_id)
         await msg.edit_text(_md(summary).strip(), parse_mode="HTML")
     except RuntimeError as e:
         await msg.edit_text(f"❌ {e}")
