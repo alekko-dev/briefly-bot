@@ -59,6 +59,14 @@ cp .env.example .env
 | `OPENAI_BASE_URL` | No | Custom endpoint (omit for OpenAI default) |
 | `OPENAI_MODEL` | No | Model name (default: `gpt-4o-mini`) |
 
+### Telegram numeric user ID (not your @username)
+
+1. Start a chat with your bot
+2. Send a message
+3. Call: `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates`
+4. Look for: `"from": { "id": 123456789 }`
+5. That is your user ID.
+
 ## Development
 
 Run locally:
