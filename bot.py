@@ -32,8 +32,8 @@ async def handle_message(update: Update, context) -> None:
     msg = await update.message.reply_text("⏳ Fetching captions...")
     try:
         video_id = video_id_from_input(url_match.group(0))
-        transcript = get_transcript(video_id)
-        summary = summarize(transcript)
+        transcript, lang_code = get_transcript(video_id)
+        summary = summarize(transcript, lang_code)
         await msg.edit_text(summary)
     except RuntimeError as e:
         await msg.edit_text(f"❌ {e}")

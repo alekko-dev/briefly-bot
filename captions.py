@@ -106,22 +106,18 @@ def cues_from_events(doc: dict) -> list[dict]:
     return cues
 
 
-def get_transcript(video_id: str) -> str:
-    """Try en-manual → en-auto → first-available track → raise RuntimeError."""
+def get_transcript(video_id: str) -> tuple[str, str]:
+    """Return (transcript_text, lang_code). Prefers manual over auto, any language."""
     player = fetch_player(video_id)
-    # Preference order
-    for lang, kind in [("en", "manual"), ("en", "auto")]:
-        base_url = pick_caption_track(player, lang, kind)
-        if base_url:
-            doc = fetch_captions_from_url(base_url)
-            cues = cues_from_events(doc)
-            return " ".join(c["text"] for c in cues if c["text"])
-    # Fallback: first available track of any language
     tracks = player.get("captions", {}).get("playerCaptionsTracklistRenderer", {})
     for pool_key in ("captionTracks", "autoCaptions"):
         pool = tracks.get(pool_key) or []
-        if pool and pool[0].get("baseUrl"):
-            doc = fetch_captions_from_url(pool[0]["baseUrl"])
-            cues = cues_from_events(doc)
-            return " ".join(c["text"] for c in cues if c["text"])
+        if pool:
+            track = pool[0]
+            base_url = track.get("baseUrl")
+            lang_code = track.get("languageCode", "und")
+            if base_url:
+                doc = fetch_captions_from_url(base_url)
+                cues = cues_from_events(doc)
+                return " ".join(c["text"] for c in cues if c["text"]), lang_code
     raise RuntimeError("No captions available for this video.")
