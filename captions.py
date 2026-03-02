@@ -14,6 +14,11 @@ def video_id_from_input(raw: str) -> str:
     raise ValueError("Could not extract an 11-char YouTube video id.")
 
 
+def _ms_to_mmss(ms: int) -> str:
+    s = ms // 1000
+    return f"{s // 60}:{s % 60:02d}"
+
+
 def get_transcript(video_id: str) -> tuple[str, str, str]:
     """Return (transcript_text, lang_code, title). Prefers manual over auto, English over others."""
     url = f"https://www.youtube.com/watch?v={video_id}"
@@ -37,12 +42,26 @@ def get_transcript(video_id: str) -> tuple[str, str, str]:
         with urllib.request.urlopen(req) as resp:
             doc = json.loads(resp.read().decode("utf-8"))
 
-        cues = [
-            "".join(seg.get("utf8", "") for seg in ev.get("segs") or []).replace("\n", " ").strip()
-            for ev in doc.get("events", [])
-            if ev.get("tStartMs") is not None and ev.get("dDurationMs") is not None
+        BUCKET_MS = 30_000  # 30-second grouping windows
+
+        buckets: dict[int, tuple[int, list[str]]] = {}  # bucket_idx -> (first_ms, [cue, ...])
+        for ev in doc.get("events", []):
+            t = ev.get("tStartMs")
+            if t is None or ev.get("dDurationMs") is None:
+                continue
+            cue = "".join(seg.get("utf8", "") for seg in ev.get("segs") or []).replace("\n", " ").strip()
+            if not cue:
+                continue
+            idx = t // BUCKET_MS
+            if idx not in buckets:
+                buckets[idx] = (t, [])
+            buckets[idx][1].append(cue)
+
+        lines = [
+            f"[{_ms_to_mmss(first_ms)}] {' '.join(cues)}"
+            for _, (first_ms, cues) in sorted(buckets.items())
         ]
-        text = " ".join(c for c in cues if c)
+        text = "\n".join(lines)
         if text:
             return text, lang, title
 

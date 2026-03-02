@@ -32,9 +32,11 @@ Your summaries should:
 1. Start with a brief overview (2-3 sentences)
 2. Include a detailed breakdown of main topics discussed
 3. Filter out any sponsor messages, subscribe requests, or promotional content
-4. Include key timestamps as clickable links for important moments, using the video URL
-   provided in the user message. Format: [MM:SS](https://youtu.be/VIDEO_ID?t=SECONDS)
-   where SECONDS is the timestamp converted to total seconds (e.g. 1:23 → t=83)
+4. Include key timestamps as clickable links for important moments. The transcript contains
+   real timestamps in [MM:SS] format at the start of each paragraph — use only these exact
+   timestamps, do not invent times that are not in the transcript. Format each link as
+   [MM:SS](https://youtu.be/VIDEO_ID?t=SECONDS) where SECONDS is the total seconds of that
+   timestamp (e.g. [1:23] → t=83). The video URL is provided in the user message.
 5. End with a brief conclusion
 6. Use **bold** for section titles instead of Markdown headings (#), and bullet points for readability
 7. If the video title contains a question or a promise (e.g. "How to...", "Why...",
