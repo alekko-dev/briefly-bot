@@ -28,21 +28,26 @@ Your summaries should:
 4. Include key timestamps in markdown link format like [12:34] for important moments
 5. End with a brief conclusion
 6. Use clear headings and bullet points for readability
+7. If the video title contains a question or a promise (e.g. "How to...", "Why...",
+   "X will make you..."), make sure the summary explicitly addresses and answers it
 
 Format timestamps as clickable links using the format: [MM:SS] or [HH:MM:SS]"""
 
 
-def summarize(transcript: str, lang_code: str) -> str:
+def summarize(transcript: str, lang_code: str, title: str = "") -> str:
     trimmed = transcript[:MAX_TRANSCRIPT_CHARS]
     if lang_code not in NO_TRANSLATE_LANGS:
         extra = f" Translate your response into {TARGET_LANG}."
     else:
         extra = ""
+    user_content = f"Transcript:\n{trimmed}"
+    if title:
+        user_content = f"Title: {title}\nTranscript:\n{user_content}"
     response = client.chat.completions.create(
         model=MODEL,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT + extra},
-            {"role": "user", "content": f"Transcript:\n{trimmed}"},
+            {"role": "user", "content": user_content},
         ],
     )
     return (response.choices[0].message.content or "").strip()

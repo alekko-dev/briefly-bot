@@ -14,11 +14,13 @@ def video_id_from_input(raw: str) -> str:
     raise ValueError("Could not extract an 11-char YouTube video id.")
 
 
-def get_transcript(video_id: str) -> tuple[str, str]:
-    """Return (transcript_text, lang_code). Prefers manual over auto, English over others."""
+def get_transcript(video_id: str) -> tuple[str, str, str]:
+    """Return (transcript_text, lang_code, title). Prefers manual over auto, English over others."""
     url = f"https://www.youtube.com/watch?v={video_id}"
     with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as ydl:
         info = ydl.extract_info(url, download=False)
+
+    title = info.get("title") or ""
 
     for pool in (info.get("subtitles") or {}, info.get("automatic_captions") or {}):
         if not pool:
@@ -42,6 +44,6 @@ def get_transcript(video_id: str) -> tuple[str, str]:
         ]
         text = " ".join(c for c in cues if c)
         if text:
-            return text, lang
+            return text, lang, title
 
     raise RuntimeError("No captions available for this video.")
