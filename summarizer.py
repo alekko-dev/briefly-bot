@@ -19,9 +19,17 @@ NO_TRANSLATE_LANGS: set[str] = set(
 # Human-readable name used directly in the LLM prompt.
 TARGET_LANG: str = os.environ.get("TARGET_LANG", "English")
 
-SYSTEM_PROMPT = """You are a concise video summarizer. Given a YouTube video transcript,
-write a clear, structured summary in 3-5 bullet points. Focus on the key ideas and takeaways.
-Use plain text, no markdown headers."""
+SYSTEM_PROMPT = """You are a helpful assistant that creates detailed, well-structured summaries of YouTube video transcripts.
+
+Your summaries should:
+1. Start with a brief overview (2-3 sentences)
+2. Include a detailed breakdown of main topics discussed
+3. Filter out any sponsor messages, subscribe requests, or promotional content
+4. Include key timestamps in markdown link format like [12:34] for important moments
+5. End with a brief conclusion
+6. Use clear headings and bullet points for readability
+
+Format timestamps as clickable links using the format: [MM:SS] or [HH:MM:SS]"""
 
 
 def summarize(transcript: str, lang_code: str) -> str:
