@@ -1,3 +1,4 @@
+import argparse
 import logging
 import os
 import re
@@ -56,7 +57,15 @@ from telegram import Update
 from telegram.ext import Application, MessageHandler, filters
 
 from captions import get_transcript, video_id_from_input
+import summarizer
 from summarizer import summarize
+
+VERBOSE = False
+
+
+def _vprint(header: str, content: str) -> None:
+    bar = "─" * 60
+    print(f"\n{bar}\n[VERBOSE] {header}\n{bar}\n{content}\n{bar}")
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -83,6 +92,11 @@ async def handle_message(update: Update, context) -> None:
     try:
         video_id = video_id_from_input(url_match.group(0))
         transcript, lang_code, title = get_transcript(video_id)
+        if VERBOSE:
+            _vprint(
+                f"TRANSCRIPT  lang={lang_code}  title={title!r}  chars={len(transcript)}",
+                transcript[:3000] + (" …[truncated]" if len(transcript) > 3000 else ""),
+            )
         summary = summarize(transcript, lang_code, title, video_id)
         await msg.edit_text(_md(summary).strip(), parse_mode="HTML")
     except RuntimeError as e:
@@ -93,9 +107,20 @@ async def handle_message(update: Update, context) -> None:
 
 
 def main() -> None:
+    global VERBOSE
+    parser = argparse.ArgumentParser(description="Briefly Telegram bot")
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Print captions, LLM request/response, and other debug info to stdout",
+    )
+    args = parser.parse_args()
+    VERBOSE = args.verbose
+    summarizer.VERBOSE = args.verbose
+
     app = Application.builder().token(TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    logger.info("Application started")
+    logger.info("Application started%s", " [VERBOSE]" if VERBOSE else "")
     app.run_polling()
 
 

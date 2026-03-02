@@ -1,3 +1,4 @@
+import json
 import os
 
 from openai import OpenAI
@@ -8,6 +9,12 @@ client = OpenAI(
 )
 MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 MAX_TRANSCRIPT_CHARS = 60_000
+VERBOSE = False
+
+
+def _vprint(header: str, content: str) -> None:
+    bar = "─" * 60
+    print(f"\n{bar}\n[VERBOSE] {header}\n{bar}\n{content}\n{bar}")
 
 # Languages the user understands — no translation needed.
 # Comma-separated ISO 639-1 codes, e.g. "en,ru"
@@ -45,11 +52,23 @@ def summarize(transcript: str, lang_code: str, title: str = "", video_id: str = 
         user_content = f"Title: {title}\n" + user_content
     if video_id:
         user_content = f"Video URL: https://youtu.be/{video_id}\n" + user_content
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT + extra},
-            {"role": "user", "content": user_content},
-        ],
-    )
-    return (response.choices[0].message.content or "").strip()
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT + extra},
+        {"role": "user", "content": user_content},
+    ]
+    if VERBOSE:
+        _vprint(f"LLM REQUEST  model={MODEL}", json.dumps(messages, ensure_ascii=False, indent=2))
+
+    response = client.chat.completions.create(model=MODEL, messages=messages)
+    result = (response.choices[0].message.content or "").strip()
+
+    if VERBOSE:
+        usage = response.usage
+        usage_str = (
+            f"prompt_tokens={usage.prompt_tokens}  "
+            f"completion_tokens={usage.completion_tokens}  "
+            f"total_tokens={usage.total_tokens}"
+        ) if usage else "usage=N/A"
+        _vprint(f"LLM RESPONSE  {usage_str}", result)
+
+    return result
