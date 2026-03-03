@@ -126,13 +126,27 @@ python scripts/poc_fetch_captions.py <video-id> --lang en --kind auto --limit 10
 
 No port binding is needed — the bot uses polling, not webhooks. It runs continuously within Railway's free $5/month credit (~500 hours/month).
 
-### Checking logs
+### [Railway CLI](https://docs.railway.com/guides/cli) quick start
 
 ```bash
+# Install
+npm install -g @railway/cli
+
+# Authenticate
+railway login
+
+# Link to your project (run from the repo root)
+railway link
+
+# Set environment variables
+railway variables set TELEGRAM_BOT_TOKEN=... TELEGRAM_OWNER_ID=... OPENAI_API_KEY=...
+
+# Deploy
+railway up
+
+# View logs
 railway logs
 ```
-
-Look for `Application started` to confirm the bot is running.
 
 ## Architecture
 
