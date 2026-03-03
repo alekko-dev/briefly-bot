@@ -43,6 +43,9 @@ class TelegramRenderer(mistune.HTMLRenderer):
     def codespan(self, code):
         return f"<code>{code}</code>"
 
+    def linebreak(self):
+        return "\n\n"
+
     def image(self, text, url, title=None, **attrs):
         return text or ""
 
