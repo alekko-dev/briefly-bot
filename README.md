@@ -125,7 +125,8 @@ python scripts/poc_fetch_captions.py <video-id> --lang en --kind auto --limit 10
 docker build -t briefly-bot .
 
 # Run (restarts automatically unless manually stopped)
-docker run -d --env-file .env --restart unless-stopped briefly-bot
+
+docker run -d --name briefly-bot --env-file .env --restart unless-stopped briefly-bot
 ```
 
 Restart policy options:
