@@ -83,6 +83,17 @@ YOUTUBE_RE = re.compile(r"https?://(?:www\.)?(?:youtube\.com/\S+|youtu\.be/\S+)"
 DETAIL_KEYWORDS = {"detail", "detailed", "full", "retell", "long"}
 
 
+def _sanitize_links(html: str, video_id: str) -> str:
+    """Strip any links that don't point to the expected video's timestamps."""
+    allowed = re.compile(r"^https://youtu\.be/" + re.escape(video_id) + r"\?t=\d+$")
+
+    def _check(m: re.Match) -> str:
+        url, text = m.group(1), m.group(2)
+        return m.group(0) if allowed.match(url) else text
+
+    return re.sub(r'<a href="([^"]*)">(.*?)</a>', _check, html, flags=re.DOTALL)
+
+
 async def handle_message(update: Update, context) -> None:
     if update.effective_user.id != OWNER_ID:
         return
@@ -121,7 +132,8 @@ async def handle_message(update: Update, context) -> None:
         else:
             await msg.edit_text("⏳ Summarizing...")
             result = summarize(transcript, lang_code, title, video_id)
-        await msg.edit_text(_md(result).strip(), parse_mode="HTML")
+        rendered = _sanitize_links(_md(result).strip(), video_id)
+        await msg.edit_text(rendered, parse_mode="HTML")
     except RuntimeError as e:
         await msg.edit_text(f"❌ {e}")
     except Exception:
