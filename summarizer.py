@@ -8,7 +8,7 @@ client = OpenAI(
     base_url=os.environ.get("OPENAI_BASE_URL"),  # None = default OpenAI
 )
 MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
-MAX_TRANSCRIPT_CHARS = 60_000
+MAX_TRANSCRIPT_CHARS = 120_000
 VERBOSE = False
 
 
@@ -44,6 +44,7 @@ Your summaries should:
 
 
 def summarize(transcript: str, lang_code: str, title: str = "", video_id: str = "") -> str:
+    was_truncated = len(transcript) > MAX_TRANSCRIPT_CHARS
     trimmed = transcript[:MAX_TRANSCRIPT_CHARS]
     if lang_code not in NO_TRANSLATE_LANGS:
         extra = f" Translate your response into {TARGET_LANG}."
@@ -63,6 +64,8 @@ def summarize(transcript: str, lang_code: str, title: str = "", video_id: str = 
 
     response = client.chat.completions.create(model=MODEL, messages=messages)
     result = (response.choices[0].message.content or "").strip()
+    if was_truncated:
+        result += "\n\n<i>⚠️ Transcript was too long and was truncated — summary may not cover the full video.</i>"
 
     if VERBOSE:
         usage = response.usage
