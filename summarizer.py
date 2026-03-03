@@ -40,7 +40,39 @@ Your summaries should:
 5. End with a brief conclusion
 6. Use **bold** for section titles instead of Markdown headings (#), and bullet points for readability
 7. If the video title contains a question or a promise (e.g. "How to...", "Why...",
-   "X will make you..."), make sure the summary explicitly addresses and answers it"""
+   "X will make you..."), make sure the summary explicitly addresses and answers it
+
+---
+
+GOOD output example:
+**Overview**
+This video explains how to optimize Python code for speed. The presenter covers profiling, algorithmic improvements, and low-level tricks with practical benchmarks throughout.
+
+**Profiling your code** [1:22](https://youtu.be/VIDEO_ID?t=82)
+• Always measure before optimizing — "premature optimization is the root of all evil"
+• Demo using cProfile and line_profiler to find hotspots
+
+**Algorithmic improvements** [5:40](https://youtu.be/VIDEO_ID?t=340)
+• Switching from O(n²) to O(n log n) yields the biggest gains
+• Replacing a nested loop with a dict lookup — 10× speedup
+
+**Conclusion**
+Profile first, fix algorithms second, and only then reach for low-level tricks.
+
+---
+
+BAD output example (never produce output like this):
+# Overview
+This video is about Python optimization.
+
+## Profiling
+- Use cProfile.
+- At 1:22 they show a demo.
+
+Problems with the bad example:
+• Uses # and ## headings — Telegram ignores them, leaving ugly literal # symbols
+• Timestamp "[1:22]" is plain text, not a clickable link
+• Missing bullet structure and section detail"""
 
 
 def summarize(transcript: str, lang_code: str, title: str = "", video_id: str = "") -> str:
