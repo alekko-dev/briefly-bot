@@ -1,7 +1,13 @@
 import json
 import re
+import urllib.request
 
-import yt_dlp
+from youtube_transcript_api import (
+    NoTranscriptFound,
+    PoTokenRequired,
+    TranscriptsDisabled,
+    YouTubeTranscriptApi,
+)
 
 
 def video_id_from_input(raw: str) -> str:
@@ -18,51 +24,67 @@ def _ms_to_mmss(ms: int) -> str:
     return f"{s // 60}:{s % 60:02d}"
 
 
+def _fetch_title(video_id: str) -> str:
+    """Fetch video title via YouTube's public oEmbed endpoint."""
+    try:
+        url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            return json.loads(resp.read().decode("utf-8")).get("title", "")
+    except Exception:
+        return ""
+
+
 def get_transcript(video_id: str) -> tuple[str, str, str]:
-    """Return (transcript_text, lang_code, title). Prefers manual over auto, English over others."""
-    url = f"https://www.youtube.com/watch?v={video_id}"
-    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "socket_timeout": 30}) as ydl:
-        info = ydl.extract_info(url, download=False)
-        title = info.get("title") or ""
-        orig_lang = info.get("language") or ""
+    """Return (transcript_text, lang_code, title).
 
-        for pool in (info.get("subtitles") or {}, info.get("automatic_captions") or {}):
-            if not pool:
+    Prefers manual subtitles over auto-generated. Within each group the
+    library returns the video's original language first, so no explicit
+    language-code detection is needed.
+    """
+    title = _fetch_title(video_id)
+
+    api = YouTubeTranscriptApi()
+    try:
+        transcript_list = api.list(video_id)
+    except TranscriptsDisabled:
+        raise RuntimeError("No captions available for this video.")
+    except Exception as exc:
+        raise RuntimeError("No captions available for this video.") from exc
+
+    for finder in (
+        lambda tl: next((t for t in tl if not t.is_generated), None),  # any manual
+        lambda tl: next(iter(tl), None),                                # any auto-generated
+    ):
+        try:
+            transcript = finder(transcript_list)
+        except NoTranscriptFound:
+            continue
+        if transcript is None:
+            continue
+
+        try:
+            fetched = transcript.fetch()
+        except (PoTokenRequired, Exception):
+            continue
+
+        BUCKET_MS = 30_000  # 30-second grouping windows
+        buckets: dict[int, tuple[int, list[str]]] = {}
+        for snippet in fetched:
+            t_ms = int(snippet.start * 1000)
+            cue = snippet.text.replace("\n", " ").strip()
+            if not cue:
                 continue
-            if orig_lang and orig_lang in pool:
-                lang = orig_lang
-            else:
-                lang = next(iter(pool), None)
-            if not lang:
-                continue
-            formats = pool[lang]
-            fmt = next((f for f in formats if f.get("ext") == "json3"), None) or (formats[0] if formats else None)
-            if not fmt or not fmt.get("url"):
-                continue
+            idx = t_ms // BUCKET_MS
+            if idx not in buckets:
+                buckets[idx] = (t_ms, [])
+            buckets[idx][1].append(cue)
 
-            doc = json.loads(ydl.urlopen(fmt["url"]).read().decode("utf-8"))
-
-            BUCKET_MS = 30_000  # 30-second grouping windows
-
-            buckets: dict[int, tuple[int, list[str]]] = {}  # bucket_idx -> (first_ms, [cue, ...])
-            for ev in doc.get("events", []):
-                t = ev.get("tStartMs")
-                if t is None or ev.get("dDurationMs") is None:
-                    continue
-                cue = "".join(seg.get("utf8", "") for seg in ev.get("segs") or []).replace("\n", " ").strip()
-                if not cue:
-                    continue
-                idx = t // BUCKET_MS
-                if idx not in buckets:
-                    buckets[idx] = (t, [])
-                buckets[idx][1].append(cue)
-
-            lines = [
-                f"[{_ms_to_mmss(first_ms)}] {' '.join(cues)}"
-                for _, (first_ms, cues) in sorted(buckets.items())
-            ]
-            text = "\n".join(lines)
-            if text:
-                return text, lang, title
+        lines = [
+            f"[{_ms_to_mmss(first_ms)}] {' '.join(cues)}"
+            for _, (first_ms, cues) in sorted(buckets.items())
+        ]
+        text = "\n".join(lines)
+        if text:
+            return text, transcript.language_code, title
 
     raise RuntimeError("No captions available for this video.")

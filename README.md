@@ -5,11 +5,11 @@ A personal Telegram bot that summarizes YouTube videos. Share a YouTube URL → 
 ## How it works
 
 1. You send a YouTube URL to the bot in Telegram (optionally with extra text)
-2. Bot fetches the video's captions via yt-dlp (no YouTube API key required)
+2. Bot fetches the video's captions via youtube-transcript-api (no YouTube API key required)
 3. Captions are sent to an LLM (OpenAI or compatible)
 4. Bot replies with a structured response including clickable timestamp links
 
-Caption track preference: original video language (manual → auto-generated) → first available track in any language.
+Caption track preference: manual subtitles → auto-generated captions, original video language first within each group.
 
 ### Modes
 
@@ -138,7 +138,7 @@ Look for `Application started` to confirm the bot is running.
 
 ### Caption fetching (`captions.py`)
 
-yt-dlp fetches video metadata and caption tracks in a single session. Track selection prefers the video's original language (manual subtitles first, auto-generated as fallback) over any other language. Caption cues are grouped into 30-second buckets and prefixed with `[MM:SS]` timestamps, giving the LLM concrete time references to build clickable deep-links from.
+`youtube-transcript-api` fetches caption tracks directly from YouTube's timedtext API. Track selection prefers manual subtitles over auto-generated; within each group the library returns the video's original language first, so no explicit language detection is needed. The video title is fetched separately via YouTube's public oEmbed endpoint. Caption cues are grouped into 30-second buckets and prefixed with `[MM:SS]` timestamps, giving the LLM concrete time references to build clickable deep-links from.
 
 ### LLM integration (`llm.py`)
 
@@ -156,7 +156,7 @@ The LLM returns Markdown. Telegram's `parse_mode="HTML"` accepts only `<b>`, `<i
 
 ### Design decisions
 
-**yt-dlp instead of the YouTube Android API.** The original implementation used the YouTube Android API directly (hardcoded client version and API key). YouTube's changing requirements broke it repeatedly. yt-dlp absorbs those changes and is maintained by the community.
+**youtube-transcript-api instead of yt-dlp.** The original implementation used the YouTube Android API directly (hardcoded client version and API key). YouTube's changing requirements broke it repeatedly. yt-dlp was introduced to absorb those changes, but its caption URL fetching returns empty responses for live streams and recent VODs — the signed CDN URLs expire or are not yet populated when the metadata is extracted. `youtube-transcript-api` fetches captions through a separate, more reliable path (YouTube's timedtext API) and handles live streams correctly.
 
-**Native-language captions, LLM translates.** An English-first caption selection strategy caused HTTP 429 errors: YouTube rate-limits translated caption endpoints when fetched outside the yt-dlp session context. Fetching the original-language track inside the yt-dlp session is reliable, and delegating translation to the LLM produces better results anyway.
+**Native-language captions, LLM translates.** An English-first caption selection strategy caused HTTP 429 errors: YouTube rate-limits translated caption endpoints. Fetching the original-language track is reliable, and delegating translation to the LLM produces better results anyway.
 
