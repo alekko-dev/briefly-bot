@@ -74,8 +74,32 @@ Problems with the bad example:
 • Timestamp "[1:22]" is plain text, not a clickable link
 • Missing bullet structure and section detail"""
 
+DETAIL_SYSTEM_PROMPT = """You are a helpful assistant that produces comprehensive retellings of YouTube video transcripts.
 
-def summarize(transcript: str, lang_code: str, title: str = "", video_id: str = "") -> str:
+Your retelling should:
+1. Cover ALL points and arguments the author makes, in the order they are presented — do not skip or compress any argument
+2. Write in narrative paragraph style with **bold** section titles (never use # headings)
+3. Include clickable timestamps for each section. The transcript contains real timestamps in
+   [MM:SS] format — use only these exact timestamps, do not invent times. Format each link as
+   [MM:SS](https://youtu.be/VIDEO_ID?t=SECONDS) where SECONDS is the total seconds of that
+   timestamp (e.g. [1:23] → t=83). The video URL is provided in the user message.
+4. Filter out sponsor messages, subscribe requests, and promotional content
+5. Be thorough — the user wants a complete retelling, not a brief summary"""
+
+QA_SYSTEM_PROMPT = """You are a helpful assistant that answers questions about YouTube videos using the provided transcript.
+
+Your answer should:
+1. Directly answer the user's question based on the transcript content
+2. Quote or paraphrase the relevant parts of the transcript to support your answer
+3. Include clickable timestamps for relevant moments. The transcript contains real timestamps in
+   [MM:SS] format — use only these exact timestamps, do not invent times. Format each link as
+   [MM:SS](https://youtu.be/VIDEO_ID?t=SECONDS) where SECONDS is the total seconds of that
+   timestamp (e.g. [1:23] → t=83). The video URL is provided in the user message.
+4. If the video does not address the question, say so clearly
+5. Use **bold** for emphasis where helpful, never # headings"""
+
+
+def summarize(transcript: str, lang_code: str, title: str = "", video_id: str = "", mode: str = "summary") -> str:
     was_truncated = len(transcript) > MAX_TRANSCRIPT_CHARS
     trimmed = transcript[:MAX_TRANSCRIPT_CHARS]
     if lang_code not in NO_TRANSLATE_LANGS:
@@ -87,12 +111,13 @@ def summarize(transcript: str, lang_code: str, title: str = "", video_id: str = 
         user_content = f"Title: {title}\n" + user_content
     if video_id:
         user_content = f"Video URL: https://youtu.be/{video_id}\n" + user_content
+    prompt = DETAIL_SYSTEM_PROMPT if mode == "detail" else SYSTEM_PROMPT
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT + extra},
+        {"role": "system", "content": prompt + extra},
         {"role": "user", "content": user_content},
     ]
     if VERBOSE:
-        _vprint(f"LLM REQUEST  model={MODEL}", json.dumps(messages, ensure_ascii=False, indent=2))
+        _vprint(f"LLM REQUEST  model={MODEL}  mode={mode}", json.dumps(messages, ensure_ascii=False, indent=2))
 
     response = client.chat.completions.create(model=MODEL, messages=messages)
     result = (response.choices[0].message.content or "").strip()
@@ -107,5 +132,41 @@ def summarize(transcript: str, lang_code: str, title: str = "", video_id: str = 
             f"total_tokens={usage.total_tokens}"
         ) if usage else "usage=N/A"
         _vprint(f"LLM RESPONSE  {usage_str}", result)
+
+    return result
+
+
+def ask_question(transcript: str, lang_code: str, title: str, video_id: str, question: str) -> str:
+    was_truncated = len(transcript) > MAX_TRANSCRIPT_CHARS
+    trimmed = transcript[:MAX_TRANSCRIPT_CHARS]
+    if lang_code not in NO_TRANSLATE_LANGS:
+        extra = f" Translate your response into {TARGET_LANG}."
+    else:
+        extra = ""
+    user_content = f"Question: {question}\nTranscript:\n{trimmed}"
+    if title:
+        user_content = f"Title: {title}\n" + user_content
+    if video_id:
+        user_content = f"Video URL: https://youtu.be/{video_id}\n" + user_content
+    messages = [
+        {"role": "system", "content": QA_SYSTEM_PROMPT + extra},
+        {"role": "user", "content": user_content},
+    ]
+    if VERBOSE:
+        _vprint(f"LLM REQUEST  model={MODEL}  mode=qa  question={question!r}", json.dumps(messages, ensure_ascii=False, indent=2))
+
+    response = client.chat.completions.create(model=MODEL, messages=messages)
+    result = (response.choices[0].message.content or "").strip()
+    if was_truncated:
+        result += "\n\n<i>⚠️ Transcript was too long and was truncated — answer may be incomplete.</i>"
+
+    if VERBOSE:
+        usage = response.usage
+        usage_str = (
+            f"prompt_tokens={usage.prompt_tokens}  "
+            f"completion_tokens={usage.completion_tokens}  "
+            f"total_tokens={usage.total_tokens}"
+        ) if usage else "usage=N/A"
+        _vprint(f"LLM RESPONSE  [Q&A]  {usage_str}", result)
 
     return result

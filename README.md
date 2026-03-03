@@ -1,22 +1,32 @@
 # Briefly Bot
 
-A personal Telegram bot that summarizes YouTube videos. Share a YouTube URL → get a concise AI-generated summary.
+A personal Telegram bot that summarizes YouTube videos. Share a YouTube URL → get a concise AI-generated summary, a detailed retelling, or answers to specific questions.
 
 ## How it works
 
-1. You send a YouTube URL to the bot in Telegram
+1. You send a YouTube URL to the bot in Telegram (optionally with extra text)
 2. Bot fetches the video's captions via yt-dlp (no YouTube API key required)
-3. Captions are sent to an LLM (OpenAI or compatible) for summarization
-4. Bot replies with a structured summary including clickable timestamp links
+3. Captions are sent to an LLM (OpenAI or compatible)
+4. Bot replies with a structured response including clickable timestamp links
 
 Caption track preference: original video language (manual → auto-generated) → first available track in any language.
+
+### Modes
+
+| What you send | Mode | Description |
+|---|---|---|
+| `<url>` | Summary | Concise summary with sections and key timestamps |
+| `<url> detail` | Detail | Comprehensive retelling covering all points the author makes, in order |
+| `<url> <any question>` | Q&A | Direct answer to your question, with supporting quotes and timestamps |
+
+Detail mode also accepts: `detailed`, `full`, `retell`, `long`.
 
 ## Project structure
 
 ```
 briefly-bot/
 ├── captions.py          # YouTube caption fetching + transcript extraction
-├── summarizer.py        # LLM summarization via OpenAI-compatible API
+├── llm.py               # LLM calls via OpenAI-compatible API (summarize, ask_question)
 ├── bot.py               # Telegram bot entry point
 ├── requirements.txt
 ├── .env.example
@@ -96,8 +106,12 @@ python scripts/poc_fetch_captions.py <video-id> --lang en --kind auto --limit 10
 
 | Scenario | Expected result |
 |---|---|
-| Send a YouTube URL | Bot replies "⏳ Fetching captions..." then edits with summary |
-| Video in a foreign language | Bot fetches native-language captions and translates the summary |
+| Send a YouTube URL alone | Concise summary with sections and timestamps |
+| Send `<url> detail` | Comprehensive retelling of all points in order |
+| Send `<url> What does the speaker say about X?` | Direct answer with relevant quotes and timestamps |
+| Question text before the URL (`What about X? <url>`) | Q&A mode — full non-URL text is used as the question |
+| Send `<url> Is this too detailed?` | Q&A mode (keyword match is exact; phrase is treated as a question) |
+| Video in a foreign language | Fetches native-language captions and translates the response |
 | Video with no captions at all | Bot replies "❌ No captions available for this video." |
 | Message sent from another account | Bot ignores it silently |
 | Non-YouTube message | Bot ignores it silently |
@@ -126,9 +140,15 @@ Look for `Application started` to confirm the bot is running.
 
 yt-dlp fetches video metadata and caption tracks in a single session. Track selection prefers the video's original language (manual subtitles first, auto-generated as fallback) over any other language. Caption cues are grouped into 30-second buckets and prefixed with `[MM:SS]` timestamps, giving the LLM concrete time references to build clickable deep-links from.
 
-### Summarization (`summarizer.py`)
+### LLM integration (`llm.py`)
 
-Calls any OpenAI-compatible endpoint via the `openai` library (`OPENAI_BASE_URL` selects the backend). The user message contains the video title, URL, and timestamped transcript. The system prompt instructs the LLM to use bold section titles, embed only timestamps that appear verbatim in the transcript formatted as `[MM:SS](https://youtu.be/ID?t=SECONDS)`, and translate the summary into `TARGET_LANG` when the video language is not in `NO_TRANSLATE_LANGS`. Transcripts are truncated at 120,000 chars (≈ 1–1.5 h of speech); a warning is appended to the summary when truncation occurs.
+Calls any OpenAI-compatible endpoint via the `openai` library (`OPENAI_BASE_URL` selects the backend). The user message contains the video title, URL, and timestamped transcript. All three modes share the same transport layer; they differ only in system prompt and user content:
+
+- **Summary** — instructs the LLM to produce a concise structured overview with bold section titles and key timestamps.
+- **Detail** — instructs the LLM to cover every point the author makes in order, in narrative paragraph style, without skipping or compressing arguments.
+- **Q&A** — prepends the user's question to the transcript; instructs the LLM to answer directly, quote relevant passages, and say clearly if the video doesn't address the question.
+
+All modes translate the response into `TARGET_LANG` when the video language is not in `NO_TRANSLATE_LANGS`. Transcripts are truncated at 120,000 chars (≈ 1–1.5 h of speech); a warning is appended when truncation occurs.
 
 ### Telegram rendering (`bot.py`)
 

@@ -60,8 +60,8 @@ from telegram import Update
 from telegram.ext import Application, MessageHandler, filters
 
 from captions import get_transcript, video_id_from_input
-import summarizer
-from summarizer import summarize
+import llm
+from llm import summarize, ask_question
 
 VERBOSE = False
 
@@ -80,6 +80,7 @@ TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 OWNER_ID = int(os.environ["TELEGRAM_OWNER_ID"])
 
 YOUTUBE_RE = re.compile(r"https?://(?:www\.)?(?:youtube\.com/\S+|youtu\.be/\S+)")
+DETAIL_KEYWORDS = {"detail", "detailed", "full", "retell", "long"}
 
 
 async def handle_message(update: Update, context) -> None:
@@ -91,17 +92,36 @@ async def handle_message(update: Update, context) -> None:
     if not url_match:
         return
 
+    url = url_match.group(0)
+    rest = (text[:url_match.start()] + text[url_match.end():])
+    rest = " ".join(rest.split())  # collapse whitespace
+
+    if not rest:
+        mode, question = "summary", None
+    elif rest.lower() in DETAIL_KEYWORDS:
+        mode, question = "detail", None
+    else:
+        mode, question = "qa", rest
+
     msg = await update.message.reply_text("⏳ Fetching captions...")
     try:
-        video_id = video_id_from_input(url_match.group(0))
+        video_id = video_id_from_input(url)
         transcript, lang_code, title = get_transcript(video_id)
         if VERBOSE:
             _vprint(
-                f"TRANSCRIPT  lang={lang_code}  title={title!r}  chars={len(transcript)}",
+                f"TRANSCRIPT  lang={lang_code}  title={title!r}  chars={len(transcript)}  mode={mode}",
                 transcript[:3000] + (" …[truncated]" if len(transcript) > 3000 else ""),
             )
-        summary = summarize(transcript, lang_code, title, video_id)
-        await msg.edit_text(_md(summary).strip(), parse_mode="HTML")
+        if mode == "qa":
+            await msg.edit_text("⏳ Answering your question...")
+            result = ask_question(transcript, lang_code, title, video_id, question)
+        elif mode == "detail":
+            await msg.edit_text("⏳ Writing detailed retelling...")
+            result = summarize(transcript, lang_code, title, video_id, mode="detail")
+        else:
+            await msg.edit_text("⏳ Summarizing...")
+            result = summarize(transcript, lang_code, title, video_id)
+        await msg.edit_text(_md(result).strip(), parse_mode="HTML")
     except RuntimeError as e:
         await msg.edit_text(f"❌ {e}")
     except Exception:
@@ -119,7 +139,7 @@ def main() -> None:
     )
     args = parser.parse_args()
     VERBOSE = args.verbose
-    summarizer.VERBOSE = args.verbose
+    llm.VERBOSE = args.verbose
 
     app = Application.builder().token(TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
