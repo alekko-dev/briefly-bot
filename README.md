@@ -5,11 +5,11 @@ A personal Telegram bot that summarizes YouTube videos. Share a YouTube URL → 
 ## How it works
 
 1. You send a YouTube URL to the bot in Telegram
-2. Bot fetches the video's captions via the YouTube Android API (no API key required)
+2. Bot fetches the video's captions via yt-dlp (no YouTube API key required)
 3. Captions are sent to an LLM (OpenAI or compatible) for summarization
-4. Bot replies with a 3–5 bullet point summary
+4. Bot replies with a structured summary including clickable timestamp links
 
-Caption track preference: English manual → English auto-generated → first available track in any language.
+Caption track preference: original video language (manual → auto-generated) → first available track in any language.
 
 ## Project structure
 
@@ -58,6 +58,8 @@ cp .env.example .env
 | `OPENAI_API_KEY` | Yes | API key for LLM endpoint |
 | `OPENAI_BASE_URL` | No | Custom endpoint (omit for OpenAI default) |
 | `OPENAI_MODEL` | No | Model name (default: `gpt-4o-mini`) |
+| `NO_TRANSLATE_LANGS` | No | Comma-separated ISO 639-1 codes to not translate (default: `en`) |
+| `TARGET_LANG` | No | Language to translate summaries into (default: `English`) |
 
 ### Telegram numeric user ID (not your @username)
 
@@ -95,7 +97,7 @@ python scripts/poc_fetch_captions.py <video-id> --lang en --kind auto --limit 10
 | Scenario | Expected result |
 |---|---|
 | Send a YouTube URL | Bot replies "⏳ Fetching captions..." then edits with summary |
-| Video with no English captions | Bot uses first available language track |
+| Video in a foreign language | Bot fetches native-language captions and translates the summary |
 | Video with no captions at all | Bot replies "❌ No captions available for this video." |
 | Message sent from another account | Bot ignores it silently |
 | Non-YouTube message | Bot ignores it silently |
@@ -117,3 +119,24 @@ railway logs
 ```
 
 Look for `Application started` to confirm the bot is running.
+
+## Architecture
+
+### Caption fetching (`captions.py`)
+
+yt-dlp fetches video metadata and caption tracks in a single session. Track selection prefers the video's original language (manual subtitles first, auto-generated as fallback) over any other language. Caption cues are grouped into 30-second buckets and prefixed with `[MM:SS]` timestamps, giving the LLM concrete time references to build clickable deep-links from.
+
+### Summarization (`summarizer.py`)
+
+Calls any OpenAI-compatible endpoint via the `openai` library (`OPENAI_BASE_URL` selects the backend). The user message contains the video title, URL, and timestamped transcript. The system prompt instructs the LLM to use bold section titles, embed only timestamps that appear verbatim in the transcript formatted as `[MM:SS](https://youtu.be/ID?t=SECONDS)`, and translate the summary into `TARGET_LANG` when the video language is not in `NO_TRANSLATE_LANGS`. Transcripts are truncated at 120,000 chars (≈ 1–1.5 h of speech); a warning is appended to the summary when truncation occurs.
+
+### Telegram rendering (`bot.py`)
+
+The LLM returns Markdown. Telegram's `parse_mode="HTML"` accepts only `<b>`, `<i>`, `<s>`, `<code>`, `<pre>`, `<blockquote>`, and `<a>`. A custom mistune renderer (`TelegramRenderer`) maps Markdown constructs to that subset: headings → `<b>`, lists → `•` bullet characters, line breaks → `\n\n`.
+
+### Design decisions
+
+**yt-dlp instead of the YouTube Android API.** The original implementation used the YouTube Android API directly (hardcoded client version and API key). YouTube's changing requirements broke it repeatedly. yt-dlp absorbs those changes and is maintained by the community.
+
+**Native-language captions, LLM translates.** An English-first caption selection strategy caused HTTP 429 errors: YouTube rate-limits translated caption endpoints when fetched outside the yt-dlp session context. Fetching the original-language track inside the yt-dlp session is reliable, and delegating translation to the LLM produces better results anyway.
+
