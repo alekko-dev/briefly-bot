@@ -117,21 +117,21 @@ async def handle_message(update: Update, context) -> None:
     msg = await update.message.reply_text("⏳ Fetching captions...")
     try:
         video_id = video_id_from_input(url)
-        transcript, lang_code, title = get_transcript(video_id)
+        transcript, lang_code, lang_name, title = get_transcript(video_id)
         if VERBOSE:
             _vprint(
-                f"TRANSCRIPT  lang={lang_code}  title={title!r}  chars={len(transcript)}  mode={mode}",
+                f"TRANSCRIPT  lang={lang_code}  lang_name={lang_name!r}  title={title!r}  chars={len(transcript)}  mode={mode}",
                 transcript[:3000] + (" …[truncated]" if len(transcript) > 3000 else ""),
             )
         if mode == "qa":
             await msg.edit_text("⏳ Answering your question...")
-            result = ask_question(transcript, lang_code, title, video_id, question)
+            result = ask_question(transcript, lang_code, lang_name, title, video_id, question)
         elif mode == "detail":
             await msg.edit_text("⏳ Writing detailed retelling...")
-            result = summarize(transcript, lang_code, title, video_id, mode="detail")
+            result = summarize(transcript, lang_code, lang_name, title, video_id, mode="detail")
         else:
             await msg.edit_text("⏳ Summarizing...")
-            result = summarize(transcript, lang_code, title, video_id)
+            result = summarize(transcript, lang_code, lang_name, title, video_id)
         rendered = _sanitize_links(_md(result).strip(), video_id)
         await msg.edit_text(rendered, parse_mode="HTML")
     except RuntimeError as e:

@@ -18,9 +18,9 @@ def _vprint(header: str, content: str) -> None:
 
 # Languages the user understands — no translation needed.
 # Comma-separated ISO 639-1 codes, e.g. "en,ru"
-NO_TRANSLATE_LANGS: set[str] = set(
-    os.environ.get("NO_TRANSLATE_LANGS", "en").split(",")
-)
+NO_TRANSLATE_LANGS: set[str] = {
+    code.strip().lower() for code in os.environ.get("NO_TRANSLATE_LANGS", "en").split(",")
+}
 
 # Language to translate summaries into for all other videos.
 # Human-readable name used directly in the LLM prompt.
@@ -106,13 +106,13 @@ _TRANSCRIPT_GUARD = (
 )
 
 
-def summarize(transcript: str, lang_code: str, title: str = "", video_id: str = "", mode: str = "summary") -> str:
+def summarize(transcript: str, lang_code: str, lang_name: str = "", title: str = "", video_id: str = "", mode: str = "summary") -> str:
     was_truncated = len(transcript) > MAX_TRANSCRIPT_CHARS
     trimmed = transcript[:MAX_TRANSCRIPT_CHARS]
-    if lang_code not in NO_TRANSLATE_LANGS:
+    if lang_code.split("-")[0].lower() not in NO_TRANSLATE_LANGS:
         extra = f" Translate your response into {TARGET_LANG}."
     else:
-        extra = ""
+        extra = f" Respond in {lang_name or 'the transcript language'}."
     user_content = f"Transcript:\n{trimmed}"
     if title:
         user_content = f"Title: {title}\n" + user_content
@@ -143,13 +143,13 @@ def summarize(transcript: str, lang_code: str, title: str = "", video_id: str = 
     return result
 
 
-def ask_question(transcript: str, lang_code: str, title: str, video_id: str, question: str) -> str:
+def ask_question(transcript: str, lang_code: str, lang_name: str, title: str, video_id: str, question: str) -> str:
     was_truncated = len(transcript) > MAX_TRANSCRIPT_CHARS
     trimmed = transcript[:MAX_TRANSCRIPT_CHARS]
-    if lang_code not in NO_TRANSLATE_LANGS:
+    if lang_code.split("-")[0].lower() not in NO_TRANSLATE_LANGS:
         extra = f" Translate your response into {TARGET_LANG}."
     else:
-        extra = ""
+        extra = f" Respond in {lang_name or 'the transcript language'}."
     user_content = f"Question: {question}\nTranscript:\n{trimmed}"
     if title:
         user_content = f"Title: {title}\n" + user_content

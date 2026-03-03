@@ -34,8 +34,8 @@ def _fetch_title(video_id: str) -> str:
         return ""
 
 
-def get_transcript(video_id: str) -> tuple[str, str, str]:
-    """Return (transcript_text, lang_code, title).
+def get_transcript(video_id: str) -> tuple[str, str, str, str]:
+    """Return (transcript_text, lang_code, lang_name, title).
 
     Prefers manual subtitles over auto-generated. Within each group the
     library returns the video's original language first, so no explicit
@@ -85,6 +85,7 @@ def get_transcript(video_id: str) -> tuple[str, str, str]:
         ]
         text = "\n".join(lines)
         if text:
-            return text, transcript.language_code, title
+            lang_name = transcript.language.split("(")[0].strip()
+            return text, transcript.language_code, lang_name, title
 
     raise RuntimeError("No captions available for this video.")
