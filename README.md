@@ -30,6 +30,8 @@ briefly-bot/
 ├── bot.py               # Telegram bot entry point
 ├── requirements.txt
 ├── .env.example
+├── Dockerfile           # Container image
+├── .dockerignore
 ├── Procfile             # Railway deployment
 └── scripts/
     └── poc_fetch_captions.py   # Original POC script (reference only)
@@ -115,6 +117,27 @@ python scripts/poc_fetch_captions.py <video-id> --lang en --kind auto --limit 10
 | Video with no captions at all | Bot replies "❌ No captions available for this video." |
 | Message sent from another account | Bot ignores it silently |
 | Non-YouTube message | Bot ignores it silently |
+
+## Deployment (Docker)
+
+```bash
+# Build
+docker build -t briefly-bot .
+
+# Run (restarts automatically unless manually stopped)
+docker run -d --env-file .env --restart unless-stopped briefly-bot
+```
+
+Restart policy options:
+
+| Policy | Behavior |
+|---|---|
+| `no` | Never restart (default) |
+| `on-failure` | Restart only on non-zero exit |
+| `unless-stopped` | Restart always, unless manually stopped |
+| `always` | Restart always, even after `docker stop` + daemon restart |
+
+`unless-stopped` is recommended for a long-running bot — it survives host reboots but respects a manual `docker stop`.
 
 ## Deployment (Railway)
 
